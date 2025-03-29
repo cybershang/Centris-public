@@ -362,7 +362,6 @@ def main():
     num_processes = min(cpu_count(), len(repos))
     args = [(repo, clone_path, tag_date_path, result_path) for repo in repos]
 
-    # 创建进程池并并行处理
     with Pool(processes=num_processes) as pool:
         pool.starmap(collect, args)
 
