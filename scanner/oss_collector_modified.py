@@ -12,17 +12,8 @@ import tlsh  # Please intall python-tlsh
 import chardet
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
-
-"""GLOBALS"""
-root_path = Path('/workspaces/scanner/test')
-clone_path = root_path / Path('clone')
-collection_path = root_path / Path('collection')
-tag_date_path = collection_path / Path("repo_date")
-result_path = collection_path / Path("repo_functions")
-ctags_path = ("ctags")
-
-for each_dir in [clone_path, tag_date_path, result_path]:
-    each_dir.mkdir(exist_ok=True, parents=True)
+import threading
+import logging
 
 
 def compute_tlsh(string):
@@ -84,7 +75,7 @@ def hashing(repo_path):
                 try:
                     # Execute Ctgas command
                     functionList = subprocess.check_output(
-                        ctags_path
+                        'ctags'
                         + ' -f - --kinds-C=* --fields=neKSt "'
                         + file_path
                         + '"',
@@ -115,14 +106,12 @@ def hashing(repo_path):
                             and len(elem_list) >= 8
                             and func.fullmatch(elem_list[3])
                         ):
-                            func_start_line = int(
-                                number.search(elem_list[4]).group(0))
-                            func_end_line = int(
-                                number.search(elem_list[7]).group(0))
+                            func_start_line = int(number.search(elem_list[4]).group(0))
+                            func_end_line = int(number.search(elem_list[7]).group(0))
 
                             tmp_string = ""
                             tmp_string = tmp_string.join(
-                                lines[func_start_line - 1: func_end_line]
+                                lines[func_start_line - 1 : func_end_line]
                             )
 
                             if func_search.search(tmp_string):
@@ -191,93 +180,7 @@ def get_local_repos(parent_dir):
         return []
 
 
-# def main():
-#     for local_repo in get_local_repos(clone_path):
-#         repo_name = Path(local_repo).name
-#         print("[+] Processing", repo_name)
-
-#         try:
-#             os.chdir(clone_path / Path(repo_name))
-
-#             # For storing tag dates
-#             date_cmd = 'git log --tags --simplify-by-decoration --pretty="format:%ai %d"'
-#             date_result = subprocess.check_output(
-#                 date_cmd, stderr=subprocess.STDOUT, shell=True
-#             ).decode()
-
-#             with open(tag_date_path / Path(repo_name), 'w') as f:
-#                 f.write(str(date_result))
-
-#             tag_cmd = "git tag"
-#             tag_result = subprocess.check_output(
-#                 tag_cmd, stderr=subprocess.STDOUT, shell=True
-#             ).decode()
-
-#             res_dict = {}
-#             file_cnt = 0
-#             func_cnt = 0
-#             line_cnt = 0
-
-#             if tag_result == "":
-#                 # No tags, only master repo
-
-#                 res_dict, file_cnt, func_cnt, line_cnt = hashing(
-#                     clone_path + repo_name)
-#                 if len(res_dict) > 0:
-#                     if not os.path.isdir(result_path + repo_name):
-#                         os.mkdir(result_path + repo_name)
-#                     title = "\t".join(
-#                         [repo_name, str(file_cnt), str(
-#                             func_cnt), str(line_cnt)]
-#                     )
-#                     result_file_path = (
-#                         result_path / repo_name / f"fuzzy_{repo_name}.hidx"
-#                     )  # Default file name: "fuzzy_OSSname.hidx"
-
-#                     indexing(res_dict, title, result_file_path)
-
-#             else:
-#                 for tag in str(tag_result).split("\n"):
-#                     # Generate function hashes for each tag (version)
-
-#                     checkout_cmd = subprocess.check_output(
-#                         "git checkout -f " + tag,
-#                         stderr=subprocess.STDOUT,
-#                         shell=True,
-#                     )
-#                     print(f"before {tag}, after {tag.replace('/', '-')}")
-#                     if "/" in tag:
-#                         tag = tag.replace("/", "-")
-
-#                     res_dict, file_cnt, func_cnt, line_cnt = hashing(
-#                         clone_path / repo_name)
-
-#                     if len(res_dict) > 0:
-#                         if not os.path.isdir(result_path / repo_name):
-#                             os.mkdir(result_path / repo_name)
-#                         title = "\t".join(
-#                             [repo_name, str(file_cnt), str(
-#                                 func_cnt), str(line_cnt)]
-#                         )
-#                         result_file_path = (
-#                             result_path / repo_name /
-#                             Path(f"fuzzy_{tag}.hidx")
-#                         )
-
-#                         indexing(res_dict, title, result_file_path)
-
-#         except subprocess.CalledProcessError as e:
-#             print("Parser Error:", e)
-#             continue
-#         except Exception as e:
-#             print("Subprocess failed", e)
-#             continue
-
-# if __name__ == '__main__':
-#     main()
-
-
-def collect(local_repo, clone_path, tag_date_path, result_path):
+def process_repo(local_repo, clone_path, tag_date_path, result_path):
     repo_name = Path(local_repo).name
     print("[+] Processing", repo_name)
 
@@ -290,7 +193,7 @@ def collect(local_repo, clone_path, tag_date_path, result_path):
             date_cmd, stderr=subprocess.STDOUT, shell=True
         ).decode()
 
-        with open(tag_date_path / Path(repo_name), 'w') as f:
+        with open(tag_date_path / Path(repo_name), "w") as f:
             f.write(str(date_result))
 
         tag_cmd = "git tag"
@@ -305,14 +208,12 @@ def collect(local_repo, clone_path, tag_date_path, result_path):
 
         if tag_result == "":
             # No tags, only master repo
-            res_dict, file_cnt, func_cnt, line_cnt = hashing(
-                clone_path + repo_name)
+            res_dict, file_cnt, func_cnt, line_cnt = hashing(clone_path + repo_name)
             if len(res_dict) > 0:
                 if not os.path.isdir(result_path + repo_name):
                     os.mkdir(result_path + repo_name)
                 title = "\t".join(
-                    [repo_name, str(file_cnt), str(
-                        func_cnt), str(line_cnt)]
+                    [repo_name, str(file_cnt), str(func_cnt), str(line_cnt)]
                 )
                 result_file_path = (
                     result_path / repo_name / f"fuzzy_{repo_name}.hidx"
@@ -332,19 +233,16 @@ def collect(local_repo, clone_path, tag_date_path, result_path):
                 if "/" in tag:
                     tag = tag.replace("/", "-")
 
-                res_dict, file_cnt, func_cnt, line_cnt = hashing(
-                    clone_path / repo_name)
+                res_dict, file_cnt, func_cnt, line_cnt = hashing(clone_path / repo_name)
 
                 if len(res_dict) > 0:
                     if not os.path.isdir(result_path / repo_name):
                         os.mkdir(result_path / repo_name)
                     title = "\t".join(
-                        [repo_name, str(file_cnt), str(
-                            func_cnt), str(line_cnt)]
+                        [repo_name, str(file_cnt), str(func_cnt), str(line_cnt)]
                     )
                     result_file_path = (
-                        result_path / repo_name /
-                        Path(f"fuzzy_{tag}.hidx")
+                        result_path / repo_name / Path(f"fuzzy_{tag}.hidx")
                     )
 
                     indexing(res_dict, title, result_file_path)
@@ -357,14 +255,81 @@ def collect(local_repo, clone_path, tag_date_path, result_path):
         return
 
 
-def main():
+def clone_repo(url, dest):
+    try:
+        logging.basicConfig(level=logging.INFO)
+        logging.info(f"start clone repo: {url} -> {dest}")
+        result = subprocess.run(
+            f"git clone --mirror {url} {dest}",
+            shell=True,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        logging.info(f"clone successed: {url} -> {dest}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"clone failed: {url} -> {dest}")
+        logging.error(e.stderr)
+        logging.error(e.stdout)
+
+
+def turn_to_working(src, dest):
+    try:
+        logging.basicConfig(level=logging.INFO)
+        logging.info(f"start turn to working: {src} -> {dest}")
+        result = subprocess.run(
+            f"git clone {src} {dest}",
+            shell=True,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        logging.info(f"turn to working successed: {src} -> {dest}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"turn to working failed: {src} -> {dest}")
+        logging.error(e.stderr)
+        logging.error(result.stdout)
+
+
+def clone_repos(repo_list, bare_path, working_path):
+    def clone_and_turn(url):
+        get_bare_repo_name = lambda url: url.split("/")[-1]
+        get_repo_name = lambda url: url.split("/")[-1].replace(".git", "")
+
+        bare = bare_path / get_bare_repo_name(url)
+        working = working_path / get_repo_name(url)
+        clone_repo(url, bare)
+        turn_to_working(bare, working)
+
+    threads = []
+    for url in repo_list:
+        thread = threading.Thread(target=clone_and_turn, args=(url,))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+
+def collect(repo_list: list, collection_path: Path):
+    bare_path = collection_path / Path("bare")
+    clone_path = collection_path / Path("repo_src")
+    tag_date_path = collection_path / Path("repo_date")
+    result_path = collection_path / Path("repo_functions")
+
+    for each_dir in [bare_path, clone_path, tag_date_path, result_path]:
+        each_dir.mkdir(exist_ok=True, parents=True)
+
+    if repo_list:
+        # multi-threads download
+        clone_repos(repo_list, bare_path, clone_path)
+
+    # multi processing
     repos = get_local_repos(clone_path)
     num_processes = min(cpu_count(), len(repos))
     args = [(repo, clone_path, tag_date_path, result_path) for repo in repos]
 
     with Pool(processes=num_processes) as pool:
-        pool.starmap(collect, args)
-
-
-if __name__ == '__main__':
-    main()
+        pool.starmap(process_repo, args)
+    
+    return result_path, tag_date_path

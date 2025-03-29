@@ -9,48 +9,18 @@ import shutil
 import json
 import math
 import tlsh
+from pathlib import Path
 
-"""GLOBALS"""
-current_path = os.getcwd()
-separator = "#@#"
-sep_len = len(separator)
-# So far, do not change
-
-theta = 0.1  # Default value (0.1)
-tag_date_path = "../osscollector/repo_date/"  # Default path
-result_path = "../osscollector/repo_functions/"  # Default path
-ver_idx_path = current_path + "/verIDX/"  # Default path
-initial_db_path = current_path + "/initialSigs/"  # Default path
-final_db_path = current_path + "/componentDB/"  # Default path of the final Component DB
-meta_path = (
-    current_path + "/metaInfos/"
-)  # Default path, for saving pieces of meta-information of collected repositories
-weight_path = meta_path + "/weights/"  # Default path, for version prediction
-func_date_path = current_path + "/funcDate/"  # Default path
-
-# Generate directories
-should_make = [
-    ver_idx_path,
-    initial_db_path,
-    final_db_path,
-    meta_path,
-    func_date_path,
-    weight_path,
-]
-for each_repo in should_make:
-    if not os.path.isdir(each_repo):
-        os.mkdir(each_repo)
-
-funcDateDict = {}
+func_date_dict = {}
 
 
-def extract_ver_date(repo_name: str):
+def extract_ver_date(repo_name: str, tag_date_path: Path) -> dict:
     # For extracting version (tag) date
-
     ver_date_dict = {}
-    if os.path.isfile(os.path.join(tag_date_path, repo_name)):
-        with open(os.path.join(tag_date_path, repo_name), "r", encoding="UTF-8") as fp:
-            body = "".join(fp.readlines()).strip()
+    tag_file_path = tag_date_path / repo_name
+    if tag_file_path.is_file():
+        with tag_file_path.open("r", encoding="UTF-8") as f:
+            body = "".join(f.readlines()).strip()
             for each_line in body.split("\n"):
                 version_list = []
                 if "tag:" in each_line:
@@ -64,7 +34,7 @@ def extract_ver_date(repo_name: str):
                             elif ")" in val:
                                 version_list.append(val.split(")")[0])
                     else:
-                        version_list = [(each_line.split("tag: ")[1][:-1])]
+                        version_list = [each_line.split("tag: ")[1][:-1]]
 
                     for each_version in version_list:
                         ver_date_dict[each_version] = date
@@ -72,38 +42,44 @@ def extract_ver_date(repo_name: str):
     return ver_date_dict
 
 
-def redundancy_elimination():
-    for repo_name in os.listdir(result_path):
-        print(repo_name)
+def redundancy_elimination(
+    result_path: Path,
+    tag_date_path: Path,
+    initial_db_path: Path,
+    ver_idx_path: Path,
+    func_date_path: Path,
+):
+
+    for dir in result_path.iterdir():
+        repo_name = dir.name
 
         func_date_dict = {}
         temp_date_dict = {}
-        ver_date_dict = extract_ver_date(repo_name)
+        ver_date_dict = extract_ver_date(repo_name, tag_date_path)
 
-        # if os.path.isfile(os.path.join(initialDBPath, repo_name + "_sig")):
-        # 	continue
-        ## For skipping already generated Sigs
+        existed_sig = initial_db_path / Path(f"{repo_name}_sig")
+        if existed_sig.is_file():
+            continue
 
         ver_temp_lst = []
         signature = {}  # mapping of function hash to idxs
         ver_dict = {}
         idx = 0
 
-        for each_version in os.listdir(os.path.join(result_path, repo_name)):
-            version_name = each_version.split("fuzzy_")[1].replace(".hidx", "")
-            if version_name == "" or version_name == " ":
-                continue
+        for each_version in (result_path / repo_name).iterdir():
+            if (
+                each_version.is_file()
+                and each_version.name.startswith("fuzzy_")
+                and each_version.suffix == ".hidx"
+            ):
+                version_name = each_version.name.split("fuzzy_")[1].replace(".hidx", "")
             ver_temp_lst.append(version_name)
         ver_temp_lst.sort()
 
         try:
             for version_name in ver_temp_lst:
-                with open(
-                    os.path.join(
-                        result_path, repo_name, ("fuzzy_" + version_name + ".hidx")
-                    ),
-                    "r",
-                    encoding="UTF-8",
+                with (result_path / repo_name / f"fuzzy_{version_name}.hidx").open(
+                    "r", encoding="UTF-8"
                 ) as fp:
                     data = json.load(fp)
 
@@ -132,59 +108,47 @@ def redundancy_elimination():
             func_date_dict[hashval] = temp_date_dict[hashval][0]
 
         # the birthdate of each function
-        fdate = open(func_date_path + repo_name + "_funcdate", "w")
-        for hashval in func_date_dict:
-            fdate.write(hashval + "\t" + func_date_dict[hashval] + "\n")
-        fdate.close()
+        with (func_date_path / f"{repo_name}_funcdate").open(
+            "w", encoding="UTF-8"
+        ) as fdate:
+            for hashval, date in func_date_dict.items():
+                fdate.write(f"{hashval}\t{date}\n")
 
         # For storing mapping of version name to indexes
-        fidx = open(ver_idx_path + repo_name + "_idx", "w")
-        save_json = []
-
-        for ver_name in ver_temp_lst:
-            temp = {}
-            temp["ver"] = ver_name
-            temp["idx"] = str(ver_dict[ver_name])
-            save_json.append(temp)
-
-        fidx.write(json.dumps(save_json))
-        fidx.close()
+        with (ver_idx_path / f"{repo_name}_idx").open("w", encoding="UTF-8") as fidx:
+            save_json = [
+                {"ver": ver_name, "idx": str(ver_dict[ver_name])}
+                for ver_name in ver_temp_lst
+            ]
+            fidx.write(json.dumps(save_json))
 
         # For storing OSS signatures
-        f = open(initial_db_path + repo_name + "_sig", "w")
-
-        save_json = []
-        for hashval in signature:
-            temp = {}
-            temp["hash"] = hashval
-            temp["vers"] = signature[hashval]
-            save_json.append(temp)
-        f.write(json.dumps(save_json))
+        with (initial_db_path / f"{repo_name}_sig").open("w", encoding="UTF-8") as f:
+            save_json = [
+                {"hash": hashval, "vers": signature[hashval]} for hashval in signature
+            ]
+            f.write(json.dumps(save_json))
         f.close()
 
 
-def save_meta_infos():
+def save_meta_infos(
+    meta_path: Path, initial_db_path: Path, result_path: Path, weight_path: Path
+):
     ave_func_json = {}
     all_func_json = {}
     unique_json = []
     unique = {}
     weight_json = {}
 
-    fave = open(meta_path + "aveFuncs", "w")
-    fall = open(meta_path + "allFuncs", "w")
-    funi = open(meta_path + "uniqueFuncs", "w")
-
-    for OSS in os.listdir(initial_db_path):
-        repo_name = OSS.replace("_sig", "")
+    for OSS in initial_db_path.iterdir():
+        repo_name = OSS.stem.replace("_sig", "")
         tot_funcs = 0
-        tot_vers = len(os.listdir(result_path + repo_name))
+        tot_vers = len(list((result_path / repo_name).iterdir()))
 
         if tot_vers == 0:
             continue
 
-        fwei = open(weight_path + "/" + repo_name + "_weights", "w")
-
-        with open(initial_db_path + OSS, "r", encoding="UTF-8") as fs:
+        with (initial_db_path / OSS).open("r", encoding="UTF-8") as fs:
             json_str = json.load(fs)
             tot_funcs = len(json_str)
 
@@ -201,7 +165,8 @@ def save_meta_infos():
         ave_func_json[repo_name] = int(tot_funcs / tot_vers)
         all_func_json[repo_name] = int(tot_funcs)
 
-        fwei.write(json.dumps(weight_json))
+        with (weight_path / f"{repo_name}_weights").open("w", encoding="UTF-8") as fwei:
+            fwei.write(json.dumps(weight_json))
         fwei.close()
 
     for funcHash in unique:
@@ -210,39 +175,43 @@ def save_meta_infos():
         temp["OSS"] = unique[funcHash]
         unique_json.append(temp)
 
-    fave.write(json.dumps(ave_func_json))
-    fall.write(json.dumps(all_func_json))
-    funi.write(json.dumps(unique_json))
+    with (meta_path / "aveFuncs").open("w", encoding="UTF-8") as fave:
+        fave.write(json.dumps(ave_func_json))
 
-    fave.close()
-    fall.close()
-    funi.close()
+    with (meta_path / "allFuncs").open("w", encoding="UTF-8") as fall:
+        fall.write(json.dumps(all_func_json))
+
+    with (meta_path / "uniqueFuncs").open("w", encoding="UTF-8") as funi:
+        funi.write(json.dumps(unique_json))
 
 
-def readVerDate(ver_date_dict, repo_name):
+def read_ver_date(ver_date_dict, repo_name, func_date_path: Path):
+    file_path = func_date_path / f"{repo_name}_funcdate"
     ver_date_dict[repo_name] = {}
-
-    if os.path.isfile(func_date_path + repo_name + "_funcdate"):
-        with open(
-            func_date_path + repo_name + "_funcdate", "r", encoding="UTF-8"
-        ) as fp:
-            body = "".join(fp.readlines()).strip()
+    if file_path.is_file():
+        with file_path.open("r", encoding="UTF-8") as fp:
+            body = fp.read().strip()
             for each_line in body.split("\n"):
-                hashval = each_line.split("\t")[0]
-                date = each_line.split("\t")[1]
+                hashval, date = each_line.split("\t")
                 ver_date_dict[repo_name][hashval] = date
     return ver_date_dict
 
 
-def getave_funcs():
+def get_ave_funcs(meta_path: Path):
     ave_funcs = {}
-    with open(meta_path + "aveFuncs", "r", encoding="UTF-8") as fp:
+    with open(meta_path / Path("aveFuncs"), "r", encoding="UTF-8") as fp:
         ave_funcs = json.load(fp)
     return ave_funcs
 
 
-def code_segmentation():
-    ave_funcs = getave_funcs()
+def code_segmentation(
+    initial_db_path: Path,
+    meta_path: Path,
+    final_db_path: Path,
+    func_date_path: Path,
+    theta=0.1,
+):
+    ave_funcs = get_ave_funcs(meta_path=meta_path)
 
     # For printing process #
     l = 1
@@ -256,7 +225,7 @@ def code_segmentation():
     date_signatures = {}
     unique_funcs = {}
 
-    with open(meta_path + "uniqueFuncs", "r", encoding="UTF-8") as fp:
+    with open(meta_path / Path("uniqueFuncs"), "r", encoding="UTF-8") as fp:
         json_str = json.load(fp)
         for each_val in json_str:
             hashval = each_val["hash"]
@@ -275,9 +244,11 @@ def code_segmentation():
         removed_funcs = []
 
         if S not in ver_date_dict:
-            ver_date_dict = readVerDate(ver_date_dict, S)
+            ver_date_dict = read_ver_date(
+                ver_date_dict, S, func_date_path=func_date_path
+            )
 
-        with open(initial_db_path + S_sig, "r", encoding="UTF-8") as fs:
+        with open(initial_db_path / Path(S_sig), "r", encoding="UTF-8") as fs:
             json_str = json.load(fs)
             if len(json_str) == 0:
                 continue
@@ -295,7 +266,9 @@ def code_segmentation():
                             candiX[OSS] = 0
 
                         if OSS not in ver_date_dict:
-                            ver_date_dict = readVerDate(ver_date_dict, OSS)
+                            ver_date_dict = read_ver_date(
+                                ver_date_dict, OSS, func_date_path=func_date_path
+                            )
 
                         # try:
                         for S_hashval in ver_date_dict[S]:
@@ -332,14 +305,13 @@ def code_segmentation():
 
                 if S not in possible_members:
                     shutil.copy(
-                        os.path.join(initial_db_path, S) + "_sig",
-                        os.path.join(final_db_path, S) + "_sig",
+                        initial_db_path / Path(f"{S}_sig"),
+                        final_db_path / Path(f"{S}_sig"),
                     )
 
                 else:
                     removed_funcs = set(removed_funcs)
                     save_json = []
-                    fres = open(os.path.join(final_db_path, S) + "_sig", "w")
 
                     for each_val in json_str:
                         temp = {}
@@ -351,16 +323,47 @@ def code_segmentation():
                             temp["vers"] = versLst
                             save_json.append(temp)
 
-                    fres.write(json.dumps(save_json))
-                    fres.close()
+                    with open(
+                        final_db_path / Path(f"{S}_sig"), "w", encoding="UTF-8"
+                    ) as fres:
+                        fres.write(json.dumps(save_json))
 
 
-def main():
-    redundancy_elimination()
-    save_meta_infos()
-    code_segmentation()
+def preprocess(preprocess_path: Path, tag_date_path: Path, result_path: Path):
+    ver_idx_path = preprocess_path / Path("verIDX")
+    initial_db_path = preprocess_path / Path("initialSigs")
+    final_db_path = preprocess_path / Path("componentDB")
+    meta_path = preprocess_path / Path("meta_infos")
+    weight_path = meta_path / Path("weights")
+    func_date_path = preprocess_path / Path("funcDate")
 
+    for each_dir in [
+        ver_idx_path,
+        initial_db_path,
+        final_db_path,
+        meta_path,
+        func_date_path,
+        weight_path,
+    ]:
+        each_dir.mkdir(exist_ok=True)
 
-""" EXECUTE """
-if __name__ == "__main__":
-    main()
+    redundancy_elimination(
+        result_path=result_path,
+        tag_date_path=tag_date_path,
+        initial_db_path=initial_db_path,
+        ver_idx_path=ver_idx_path,
+        func_date_path=func_date_path,
+    )
+    save_meta_infos(
+        meta_path=meta_path,
+        initial_db_path=initial_db_path,
+        result_path=result_path,
+        weight_path=weight_path,
+    )
+    code_segmentation(
+        initial_db_path=initial_db_path,
+        meta_path=meta_path,
+        final_db_path=final_db_path,
+        func_date_path=func_date_path,
+        theta=0.1,
+    )
