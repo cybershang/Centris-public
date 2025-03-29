@@ -7,57 +7,47 @@ Modified: 	December 16, 2020.
 import os
 import sys
 
-import OSS_Collector
 import json
 import tlsh
 
-"""GLOBALS"""
-currentPath = os.getcwd()
+scanner_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(scanner_dir)
+
+from scanner.oss_collector_modified import hashing
+from scanner.preprocessor_full_modified import get_ave_funcs
+from scanner.config import (
+    result_path as repo_func_path,
+    ver_idx_path,
+    initial_db_path,
+    final_db_path,
+    weight_path,
+    meta_path,
+)
+
 theta = 0.1
-resultPath = currentPath + "/res/"
-repoFuncPath = "../osscollector/repo_functions/"
-verIDXpath = "../preprocessor/verIDX/"
-initialDBPath = "../preprocessor/initialSigs/"
-finalDBPath = "../preprocessor/componentDB/"
-metaPath = "../preprocessor/metaInfos/"
-aveFuncPath = metaPath + "aveFuncs"
-weightPath = metaPath + "weights/"
 
 
-shouldMake = [resultPath]
-for eachRepo in shouldMake:
-    if not os.path.isdir(eachRepo):
-        os.mkdir(eachRepo)
+def read_component_db() -> dict:
+    component_db = {}
+    json_lst = []
+
+    for OSS in os.listdir(final_db_path):
+        component_db[OSS] = []
+        with open(final_db_path / OSS, "r", encoding="UTF-8") as fp:
+            json_lst = json.load(fp)
+
+            for each_hash in json_lst:
+                hashval = each_hash["hash"]
+                component_db[OSS].append(hashval)
+
+    return component_db
 
 
-def getAveFuncs():
-    aveFuncs = {}
-    with open(aveFuncPath, "r", encoding="UTF-8") as fp:
-        aveFuncs = json.load(fp)
-    return aveFuncs
-
-
-def readComponentDB():
-    componentDB = {}
-    jsonLst = []
-
-    for OSS in os.listdir(finalDBPath):
-        componentDB[OSS] = []
-        with open(finalDBPath + OSS, "r", encoding="UTF-8") as fp:
-            jsonLst = json.load(fp)
-
-            for eachHash in jsonLst:
-                hashval = eachHash["hash"]
-                componentDB[OSS].append(hashval)
-
-    return componentDB
-
-
-def readAllVers(repoName):
+def read_all_vers(repo_name):
     allVerList = []
     idx2Ver = {}
 
-    with open(verIDXpath + repoName + "_idx", "r", encoding="UTF-8") as fp:
+    with open(ver_idx_path / f"{repo_name}_idx", "r", encoding="UTF-8") as fp:
         tempVerList = json.load(fp)
 
         for eachVer in tempVerList:
@@ -67,60 +57,64 @@ def readAllVers(repoName):
     return allVerList, idx2Ver
 
 
-def readWeigts(repoName):
+def read_weigts(repo_name):
     weightDict = {}
 
-    with open(weightPath + repoName + "_weights", "r", encoding="UTF-8") as fp:
+    with open(weight_path / f"{repo_name}_weights", "r", encoding="UTF-8") as fp:
         weightDict = json.load(fp)
 
     return weightDict
 
 
-def detector(inputDict, inputRepo):
-    componentDB = {}
+def detect(input_path: str, input_repo: str):
+    res_dict, file_cnt, func_cnt, line_cnt = hashing(input_path)
 
-    componentDB = readComponentDB()
+    component_db = {}
 
-    print("Detecting " + inputRepo)
+    component_db = read_component_db()
+
+    print("Detecting " + input_repo)
     result = {}
-    aveFuncs = getAveFuncs()
+    ave_funcs = get_ave_funcs(meta_path)
 
-    for OSS in componentDB:
-        commonFunc = []
-        repoName = OSS.split("_sig")[0]
-        totOSSFuncs = float(aveFuncs[repoName])
-        if totOSSFuncs == 0.0:
+    for OSS in component_db:
+        common_func = []
+        repo_name = OSS.split("_sig")[0]
+        total_oss_funcs = float(ave_funcs[repo_name])
+        if total_oss_funcs == 0.0:
             continue
 
-        comOSSFuncs = 0.0
-        for hashval in componentDB[OSS]:
-            if hashval in inputDict:
-                commonFunc.append(hashval)
-                comOSSFuncs += 1.0
+        com_oss_funcs = 0.0
+        for hashval in component_db[OSS]:
+            if hashval in res_dict:
+                common_func.append(hashval)
+                com_oss_funcs += 1.0
 
-        if (comOSSFuncs / totOSSFuncs) >= theta:
-            verPredictDict = {}
-            allVerList, idx2Ver = readAllVers(repoName)
+        if (com_oss_funcs / total_oss_funcs) >= theta:
+            ver_predict_dict = {}
+            all_ver_list, idx_2_ver = read_all_vers(repo_name)
 
-            for eachVersion in allVerList:
-                verPredictDict[eachVersion] = 0.0
+            for each_version in all_ver_list:
+                ver_predict_dict[each_version] = 0.0
 
-            weightDict = readWeigts(repoName)
+            weight_dict = read_weigts(repo_name)
 
-            with open(initialDBPath + OSS, "r", encoding="UTF-8") as fi:
-                jsonLst = json.load(fi)
-                for eachHash in jsonLst:
+            with open(initial_db_path / OSS, "r", encoding="UTF-8") as fi:
+                json_lst = json.load(fi)
+                for eachHash in json_lst:
                     hashval = eachHash["hash"]
                     verlist = eachHash["vers"]
 
-                    if hashval in commonFunc:
-                        for addedVer in verlist:
-                            verPredictDict[idx2Ver[addedVer]] += weightDict[hashval]
+                    if hashval in common_func:
+                        for added_ver in verlist:
+                            ver_predict_dict[idx_2_ver[added_ver]] += weight_dict[
+                                hashval
+                            ]
 
-            sortedByWeight = sorted(
-                verPredictDict.items(), key=lambda x: x[1], reverse=True
+            sorted_by_weight = sorted(
+                ver_predict_dict.items(), key=lambda x: x[1], reverse=True
             )
-            predictedVer = sortedByWeight[0][0]
+            predicted_ver = sorted_by_weight[0][0]
 
             # TODO: modify this part of code to add more information to the result
             #     "70F055D272EA6CC1A115BA21563BAA0D605D4CDF387406C1EAE1D9219B3CB88F406F1A": [
@@ -129,29 +123,29 @@ def detector(inputDict, inputRepo):
             #         "path": "\\apps\\apps.c"
             #     }
             # ],
-            predictOSSDict = {}
+            predict_oss_dict = {}
             with open(
-                repoFuncPath + repoName + "/fuzzy_" + predictedVer + ".hidx",
+                repo_func_path / repo_name / f"fuzzy_{predicted_ver}.hidx",
                 "r",
                 encoding="UTF-8",
             ) as f:
-                jsonDict = json.load(f)
-                for funcHash in jsonDict:
-                    predictOSSDict[funcHash] = jsonDict[funcHash]
+                json_dict = json.load(f)
+                for func_hash in json_dict:
+                    predict_oss_dict[func_hash] = json_dict[func_hash]
 
             used = 0
             unused = 0
             modified = 0
-            structureChange = False
+            structure_change = False
             reused_function_dict = {}
-            for ohash in predictOSSDict:
+            for ohash in predict_oss_dict:
 
-                if ohash not in componentDB[OSS]:
+                if ohash not in component_db[OSS]:
                     continue
 
                 flag = 0
 
-                for thash in inputDict:
+                for thash in res_dict:
                     # Hit similar function
                     if ohash == thash:
                         used += 1
@@ -165,19 +159,19 @@ def detector(inputDict, inputRepo):
                         #             nflag = 1
 
                         # MOIDIFIED
-                        for func in predictOSSDict[ohash]:
-                            for t_func in inputDict[thash]:
+                        for func in predict_oss_dict[ohash]:
+                            for t_func in res_dict[thash]:
                                 if func["path"] in t_func["path"]:
                                     nflag = 1
 
                         if nflag == 0:
-                            structureChange = True
+                            structure_change = True
 
                         # NOTICE: MODIFIED HERE
                         reused_function_dict[ohash] = {
                             "type": "structure change" if nflag == 0 else "exact",
-                            "target": inputDict[thash],
-                            "component": predictOSSDict[ohash],
+                            "target": res_dict[thash],
+                            "component": predict_oss_dict[ohash],
                         }
 
                         flag = 1
@@ -194,13 +188,13 @@ def detector(inputDict, inputRepo):
                         #         if opath in tpath:
                         #             nflag = 1
 
-                        for func in predictOSSDict[ohash]:
-                            for t_func in inputDict[thash]:
+                        for func in predict_oss_dict[ohash]:
+                            for t_func in res_dict[thash]:
                                 if func["path"] in t_func["path"]:
                                     nflag = 1
 
                         if nflag == 0:
-                            structureChange = True
+                            structure_change = True
 
                         # NOTICE: MODIFIED HERE
                         if int(score) <= 30:
@@ -211,8 +205,8 @@ def detector(inputDict, inputRepo):
                                     else "modified"
                                 ),
                                 "t_hash": thash,
-                                "target": inputDict[thash],
-                                "component": predictOSSDict[ohash],
+                                "target": res_dict[thash],
+                                "component": predict_oss_dict[ohash],
                             }
 
                         flag = 1
@@ -220,28 +214,9 @@ def detector(inputDict, inputRepo):
                     if flag == 0:
                         unused += 1
 
-            result[OSS] = {
-                "version": predictedVer,
+            result[OSS.replace("_sig", "")] = {
+                "version": predicted_ver,
                 "reused_functions": reused_function_dict,
             }
-    with open(resultPath + "result_" + inputRepo + ".json", "w") as f:
-        json.dump(result, f, indent=4)
 
-
-def main(inputPath, inputRepo):
-    resDict, fileCnt, funcCnt, lineCnt = OSS_Collector.hashing(inputPath)
-    detector(resDict, inputRepo)
-
-
-""" EXECUTE """
-if __name__ == "__main__":
-
-    testmode = 0
-
-    if testmode:
-        inputPath = currentPath + "/crown"
-    else:
-        inputPath = sys.argv[1]
-
-    inputRepo = os.path.basename(inputPath)
-    main(inputPath, inputRepo)
+    return result

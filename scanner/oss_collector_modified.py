@@ -14,6 +14,11 @@ from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import threading
 import logging
+import sys
+
+scanner_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(scanner_dir)
+from scanner.config import bare_path, clone_path, tag_date_path, result_path
 
 
 def compute_tlsh(string):
@@ -53,9 +58,9 @@ def normalize(string):
     ).lower()
 
 
-def hashing(repo_path):
-    def get_encoding(filePath):
-        return chardet.detect(open(filePath, "rb").read())["encoding"]
+def hashing(repo_path:Path):
+    def get_encoding(file_path):
+        return chardet.detect(open(file_path, "rb").read())["encoding"]
 
     # This function is for hashing C/C++ functions
     # Only consider ".c", ".cc", and ".cpp" files
@@ -67,7 +72,7 @@ def hashing(repo_path):
 
     res_dict = {}
 
-    for path, dir, files in os.walk(repo_path):
+    for path, dir, files in os.walk(str(repo_path)):
         for file in files:
             file_path = os.path.join(path, file)
 
@@ -75,7 +80,7 @@ def hashing(repo_path):
                 try:
                     # Execute Ctgas command
                     functionList = subprocess.check_output(
-                        'ctags'
+                        "ctags"
                         + ' -f - --kinds-C=* --fields=neKSt "'
                         + file_path
                         + '"',
@@ -160,7 +165,7 @@ def indexing(res_dict, title, file_path):
         json.dump(res_dict, f, indent=4)
 
 
-def get_local_repos(parent_dir):
+def get_local_repos(parent_dir: Path):
     try:
         # List all entries in the directory
         entries = os.listdir(parent_dir)
@@ -180,7 +185,9 @@ def get_local_repos(parent_dir):
         return []
 
 
-def process_repo(local_repo, clone_path, tag_date_path, result_path):
+def process_repo(
+    local_repo: Path, clone_path: Path, tag_date_path: Path, result_path: Path
+):
     repo_name = Path(local_repo).name
     print("[+] Processing", repo_name)
 
@@ -208,7 +215,7 @@ def process_repo(local_repo, clone_path, tag_date_path, result_path):
 
         if tag_result == "":
             # No tags, only master repo
-            res_dict, file_cnt, func_cnt, line_cnt = hashing(clone_path + repo_name)
+            res_dict, file_cnt, func_cnt, line_cnt = hashing(clone_path / repo_name)
             if len(res_dict) > 0:
                 if not os.path.isdir(result_path + repo_name):
                     os.mkdir(result_path + repo_name)
@@ -291,7 +298,7 @@ def turn_to_working(src, dest):
         logging.error(result.stdout)
 
 
-def clone_repos(repo_list, bare_path, working_path):
+def clone_repos(repo_list: Path, bare_path: Path, working_path: Path):
     def clone_and_turn(url):
         get_bare_repo_name = lambda url: url.split("/")[-1]
         get_repo_name = lambda url: url.split("/")[-1].replace(".git", "")
@@ -311,12 +318,7 @@ def clone_repos(repo_list, bare_path, working_path):
         thread.join()
 
 
-def collect(repo_list: list, collection_path: Path):
-    bare_path = collection_path / Path("bare")
-    clone_path = collection_path / Path("repo_src")
-    tag_date_path = collection_path / Path("repo_date")
-    result_path = collection_path / Path("repo_functions")
-
+def collect(repo_list: list):
     for each_dir in [bare_path, clone_path, tag_date_path, result_path]:
         each_dir.mkdir(exist_ok=True, parents=True)
 
@@ -331,5 +333,3 @@ def collect(repo_list: list, collection_path: Path):
 
     with Pool(processes=num_processes) as pool:
         pool.starmap(process_repo, args)
-    
-    return result_path, tag_date_path

@@ -8,8 +8,24 @@ import os
 import shutil
 import json
 import math
-import tlsh
 from pathlib import Path
+import sys
+import tlsh
+
+scanner_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(scanner_dir)
+
+from scanner.config import (
+    result_path,
+    tag_date_path,
+    initial_db_path,
+    func_date_path,
+    ver_idx_path,
+    weight_path,
+    meta_path,
+    final_db_path,
+)
+
 
 func_date_dict = {}
 
@@ -42,14 +58,7 @@ def extract_ver_date(repo_name: str, tag_date_path: Path) -> dict:
     return ver_date_dict
 
 
-def redundancy_elimination(
-    result_path: Path,
-    tag_date_path: Path,
-    initial_db_path: Path,
-    ver_idx_path: Path,
-    func_date_path: Path,
-):
-
+def redundancy_elimination():
     for dir in result_path.iterdir():
         repo_name = dir.name
 
@@ -57,7 +66,7 @@ def redundancy_elimination(
         temp_date_dict = {}
         ver_date_dict = extract_ver_date(repo_name, tag_date_path)
 
-        existed_sig = initial_db_path / Path(f"{repo_name}_sig")
+        existed_sig = initial_db_path / f"{repo_name}_sig"
         if existed_sig.is_file():
             continue
 
@@ -131,9 +140,7 @@ def redundancy_elimination(
         f.close()
 
 
-def save_meta_infos(
-    meta_path: Path, initial_db_path: Path, result_path: Path, weight_path: Path
-):
+def save_meta_infos():
     ave_func_json = {}
     all_func_json = {}
     unique_json = []
@@ -199,18 +206,12 @@ def read_ver_date(ver_date_dict, repo_name, func_date_path: Path):
 
 def get_ave_funcs(meta_path: Path):
     ave_funcs = {}
-    with open(meta_path / Path("aveFuncs"), "r", encoding="UTF-8") as fp:
+    with open(meta_path / "aveFuncs", "r", encoding="UTF-8") as fp:
         ave_funcs = json.load(fp)
     return ave_funcs
 
 
-def code_segmentation(
-    initial_db_path: Path,
-    meta_path: Path,
-    final_db_path: Path,
-    func_date_path: Path,
-    theta=0.1,
-):
+def code_segmentation(theta=0.1):
     ave_funcs = get_ave_funcs(meta_path=meta_path)
 
     # For printing process #
@@ -225,7 +226,7 @@ def code_segmentation(
     date_signatures = {}
     unique_funcs = {}
 
-    with open(meta_path / Path("uniqueFuncs"), "r", encoding="UTF-8") as fp:
+    with open(meta_path / "uniqueFuncs", "r", encoding="UTF-8") as fp:
         json_str = json.load(fp)
         for each_val in json_str:
             hashval = each_val["hash"]
@@ -248,7 +249,7 @@ def code_segmentation(
                 ver_date_dict, S, func_date_path=func_date_path
             )
 
-        with open(initial_db_path / Path(S_sig), "r", encoding="UTF-8") as fs:
+        with open(initial_db_path / S_sig, "r", encoding="UTF-8") as fs:
             json_str = json.load(fs)
             if len(json_str) == 0:
                 continue
@@ -305,8 +306,8 @@ def code_segmentation(
 
                 if S not in possible_members:
                     shutil.copy(
-                        initial_db_path / Path(f"{S}_sig"),
-                        final_db_path / Path(f"{S}_sig"),
+                        initial_db_path / f"{S}_sig",
+                        final_db_path / f"{S}_sig",
                     )
 
                 else:
@@ -324,19 +325,12 @@ def code_segmentation(
                             save_json.append(temp)
 
                     with open(
-                        final_db_path / Path(f"{S}_sig"), "w", encoding="UTF-8"
+                        final_db_path / f"{S}_sig", "w", encoding="UTF-8"
                     ) as fres:
                         fres.write(json.dumps(save_json))
 
 
-def preprocess(preprocess_path: Path, tag_date_path: Path, result_path: Path):
-    ver_idx_path = preprocess_path / Path("verIDX")
-    initial_db_path = preprocess_path / Path("initialSigs")
-    final_db_path = preprocess_path / Path("componentDB")
-    meta_path = preprocess_path / Path("meta_infos")
-    weight_path = meta_path / Path("weights")
-    func_date_path = preprocess_path / Path("funcDate")
-
+def preprocess():
     for each_dir in [
         ver_idx_path,
         initial_db_path,
@@ -347,23 +341,6 @@ def preprocess(preprocess_path: Path, tag_date_path: Path, result_path: Path):
     ]:
         each_dir.mkdir(exist_ok=True)
 
-    redundancy_elimination(
-        result_path=result_path,
-        tag_date_path=tag_date_path,
-        initial_db_path=initial_db_path,
-        ver_idx_path=ver_idx_path,
-        func_date_path=func_date_path,
-    )
-    save_meta_infos(
-        meta_path=meta_path,
-        initial_db_path=initial_db_path,
-        result_path=result_path,
-        weight_path=weight_path,
-    )
-    code_segmentation(
-        initial_db_path=initial_db_path,
-        meta_path=meta_path,
-        final_db_path=final_db_path,
-        func_date_path=func_date_path,
-        theta=0.1,
-    )
+    redundancy_elimination()
+    save_meta_infos()
+    code_segmentation()
