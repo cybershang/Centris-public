@@ -2,16 +2,14 @@
 Detector.
 Author:		Seunghoon Woo (seunghoonwoo@korea.ac.kr)
 Modified: 	December 16, 2020.
+Forked and modified by: Yingjie Shang (me@yingjie.dev)
+Date of modification: 2025-03-30
 """
 
 import os
-import sys
-
 import json
 import tlsh
 
-scanner_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(scanner_dir)
 
 from scanner.oss_collector_modified import hashing
 from scanner.preprocessor_full_modified import get_ave_funcs
@@ -95,7 +93,8 @@ def detect(input_path: str, input_repo: str):
             all_ver_list, idx_2_ver = read_all_vers(repo_name)
 
             for each_version in all_ver_list:
-                ver_predict_dict[each_version] = 0.0
+                if len(each_version) > 0:
+                    ver_predict_dict[each_version] = 0.0
 
             weight_dict = read_weigts(repo_name)
 

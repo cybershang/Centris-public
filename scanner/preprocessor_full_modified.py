@@ -2,6 +2,8 @@
 Preprocessor.
 Author:		Seunghoon Woo (seunghoonwoo@korea.ac.kr)
 Modified: 	December 16, 2020.
+Forked and modified by: Yingjie Shang (me@yingjie.dev)
+Date of modification: 2025-03-30
 """
 
 import os
@@ -9,11 +11,8 @@ import shutil
 import json
 import math
 from pathlib import Path
-import sys
 import tlsh
 
-scanner_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(scanner_dir)
 
 from scanner.config import (
     result_path,

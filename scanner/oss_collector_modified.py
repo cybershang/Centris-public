@@ -2,6 +2,8 @@
 Dataset Collection Tool.
 Author:		Seunghoon Woo (seunghoonwoo@korea.ac.kr)
 Modified: 	December 16, 2020.
+Forked and modified by: Yingjie Shang (me@yingjie.dev)
+Date of modification: 2025-03-30
 """
 
 import json
@@ -14,10 +16,7 @@ from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import threading
 import logging
-import sys
 
-scanner_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(scanner_dir)
 from scanner.config import bare_path, clone_path, tag_date_path, result_path
 
 
@@ -198,15 +197,18 @@ def process_repo(
         date_cmd = 'git log --tags --simplify-by-decoration --pretty="format:%ai %d"'
         date_result = subprocess.check_output(
             date_cmd, stderr=subprocess.STDOUT, shell=True
-        ).decode()
+        ).decode().splitlines()
+        date_result = [line for line in date_result if '(' in line and ')' in line]
+
 
         with open(tag_date_path / Path(repo_name), "w") as f:
-            f.write(str(date_result))
+            for line in date_result:
+                f.write(line + '\n')
 
         tag_cmd = "git tag"
         tag_result = subprocess.check_output(
             tag_cmd, stderr=subprocess.STDOUT, shell=True
-        ).decode()
+        ).decode().strip()
 
         res_dict = {}
         file_cnt = 0
@@ -248,6 +250,8 @@ def process_repo(
                     title = "\t".join(
                         [repo_name, str(file_cnt), str(func_cnt), str(line_cnt)]
                     )
+                    if tag == '':
+                        print('got')
                     result_file_path = (
                         result_path / repo_name / Path(f"fuzzy_{tag}.hidx")
                     )
