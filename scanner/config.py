@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-root_path = Path(os.getenv("data"))
+root_path = Path(os.getenv("scanner_data"))
 
 collection = root_path / "collection"
 collection.mkdir(exist_ok=True)
