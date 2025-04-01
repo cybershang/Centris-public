@@ -17,7 +17,7 @@ from multiprocessing import Pool, cpu_count
 import threading
 import logging
 
-from scanner.config import bare_path, clone_path, tag_date_path, result_path
+from .config import bare_path, clone_path, tag_date_path, result_path
 
 
 def compute_tlsh(string):

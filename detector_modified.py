@@ -10,10 +10,9 @@ import os
 import json
 import tlsh
 
-
-from scanner.oss_collector_modified import hashing
-from scanner.preprocessor_full_modified import get_ave_funcs
-from scanner.config import (
+from .oss_collector_modified import hashing
+from .preprocessor_full_modified import get_ave_funcs
+from .config import (
     result_path as repo_func_path,
     ver_idx_path,
     initial_db_path,
@@ -65,6 +64,7 @@ def read_weigts(repo_name):
 
 
 def detect(input_path: str, input_repo: str):
+    print(f"input_path:{input_path}")
     res_dict, file_cnt, func_cnt, line_cnt = hashing(input_path)
 
     component_db = {}

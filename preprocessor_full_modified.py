@@ -14,7 +14,7 @@ from pathlib import Path
 import tlsh
 
 
-from scanner.config import (
+from .config import (
     result_path,
     tag_date_path,
     initial_db_path,

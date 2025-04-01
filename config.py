@@ -1,16 +1,13 @@
-import os
 from pathlib import Path
+from app.config import config
 
-root_path = Path(os.getenv("scanner_data"))
+root_path = Path(config.scan_data)
 
 collection = root_path / "collection"
-collection.mkdir(exist_ok=True)
 
 preprocess = root_path / "preprocess"
-preprocess.mkdir(exist_ok=True)
 
 detection = root_path / "result"
-detection.mkdir(exist_ok=True)
 
 
 bare_path = collection / "bare"
